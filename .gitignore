@@ -1,0 +1,15 @@
+# Sweep results (large, generated data)
+sweep_results/
+
+# MATLAB temp files
+*.asv
+*.mex*
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+nul
+.DS_Store
+Thumbs.db
