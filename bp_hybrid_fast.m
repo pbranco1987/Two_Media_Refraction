@@ -1,4 +1,4 @@
-function [Img, tTotal] = bp_hybrid_fast(n2_in, n3_in, depth1_in, outputDir)
+function [Img, tTotal] = bp_hybrid_fast(n2_in, n3_in, depth1_in, outputDir, gpuIdx)
 % =========================================================================
 % FAST MULTI-LAYER SAR BACKPROJECTION (SNELL INIT + NEWTON REFINE)
 % =========================================================================
@@ -30,7 +30,12 @@ function [Img, tTotal] = bp_hybrid_fast(n2_in, n3_in, depth1_in, outputDir)
 clc; close all;
 
 %% ======================== SETUP =========================================
-g = gpuDevice; reset(g);
+if ~isempty(gpuIdx)
+    g = gpuDevice(gpuIdx);
+else
+    g = gpuDevice;
+end
+reset(g);
 fprintf('GPU: %s (%.1f GB free)\n', g.Name, g.AvailableMemory/1e9);
 
 % -------------------------- Physical parameters --------------------------
@@ -40,6 +45,7 @@ if nargin < 1 || isempty(n2_in),     n2_in = 3.8;  end
 if nargin < 2 || isempty(n3_in),     n3_in = 3.4;  end
 if nargin < 3 || isempty(depth1_in), depth1_in = 0.85; end
 if nargin < 4 || isempty(outputDir), outputDir = '.'; end
+if nargin < 5 || isempty(gpuIdx),   gpuIdx = [];    end
 
 n2 = single(n2_in);
 n3 = single(n3_in);

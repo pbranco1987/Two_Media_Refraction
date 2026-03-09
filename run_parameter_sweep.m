@@ -30,9 +30,16 @@
 
 clc; clear; close all;
 
+%% ======================== BATCH / GPU CONFIGURATION ======================
+% Set trialStart and trialEnd to run a subset of the full sweep.
+% Defaults: trialStart = 1, trialEnd = inf (all trials).
+% Set gpuIdx to select which GPU device to use (1-based MATLAB indexing).
+% Default: gpuIdx = [] (use MATLAB's default GPU).
+if ~exist('trialStart', 'var'), trialStart = 1;   end
+if ~exist('trialEnd',   'var'), trialEnd   = inf;  end
+if ~exist('gpuIdx',     'var'), gpuIdx     = [];    end
+
 %% ======================== DEFINE PARAMETER RANGES =======================
-% Refractive indices: 9 evenly spaced values from 3.2 to 4.0 (step = 0.1)
-% These represent typical soil permittivity values for GPR applications.
 n2_values = 3.2:0.05:4.0;   % Soil layer 1 refractive index (17 values)
 n3_values = 3.2:0.05:4.0;   % Soil layer 2 refractive index (17 values)
 
@@ -56,7 +63,10 @@ n3_list     = N3_grid(:);     % Flattened list of all n3 values [nCombinations x
 depth1_list = D1_grid(:);     % Flattened list of all depth1 values [nCombinations x 1]
 nCombinations = numel(n2_list);  % Total number of parameter combinations
 
-nToRun = nCombinations;
+% Clamp trial range to valid bounds
+trialStart = max(1, trialStart);
+trialEnd   = min(nCombinations, trialEnd);
+nToRun     = trialEnd - trialStart + 1;
 
 fprintf('============================================\n');
 fprintf('       PARAMETER SWEEP (3D Cartesian)       \n');
@@ -66,7 +76,11 @@ fprintf('n3 values (%d): %s\n', numel(n3_values), mat2str(n3_values, 4));
 fprintf('depth1 values (%d): %s\n', numel(depth1_values), mat2str(depth1_values, 4));
 fprintf('Full cartesian product: %d x %d x %d = %d\n', ...
     numel(n2_values), numel(n3_values), numel(depth1_values), nCombinations);
-fprintf('Trials to compute: %d\n\n', nToRun);
+fprintf('Trial range: %d to %d (%d trials)\n', trialStart, trialEnd, nToRun);
+if ~isempty(gpuIdx)
+    fprintf('GPU device: %d\n', gpuIdx);
+end
+fprintf('\n');
 
 %% ======================== PRE-ALLOCATE RESULTS ==========================
 % Pre-allocate all metric storage arrays with NaN. Each array has one
@@ -162,9 +176,14 @@ sweepVarNames = { ...
     'DynamicRange_dB', ...
     'Status', 'Folder'};
 
-% Paths for the live-updated summary files
-summaryMatFile = fullfile(baseOutputDir, 'sweep_summary.mat');
-summaryCsvFile = fullfile(baseOutputDir, 'sweep_summary.csv');
+% Paths for the live-updated summary files (include range to avoid overwrites)
+if trialStart == 1 && trialEnd == nCombinations
+    summaryMatFile = fullfile(baseOutputDir, 'sweep_summary.mat');
+    summaryCsvFile = fullfile(baseOutputDir, 'sweep_summary.csv');
+else
+    summaryMatFile = fullfile(baseOutputDir, sprintf('sweep_summary_%d_%d.mat', trialStart, trialEnd));
+    summaryCsvFile = fullfile(baseOutputDir, sprintf('sweep_summary_%d_%d.csv', trialStart, trialEnd));
+end
 
 %% ======================== RUN SWEEP =====================================
 % Main loop: iterate over all parameter combinations, skipping redundant
@@ -172,7 +191,7 @@ summaryCsvFile = fullfile(baseOutputDir, 'sweep_summary.csv');
 sweepStartTime = tic;
 nComputed = 0;   % Counter for actually computed (non-skipped) trials
 
-for k = 1:nCombinations
+for k = trialStart:trialEnd
     n2_val     = n2_list(k);
     n3_val     = n3_list(k);
     depth1_val = depth1_list(k);
@@ -192,7 +211,7 @@ for k = 1:nCombinations
 
         try
             % ---- Step 1: Run backprojection ----
-            [Img, tTotal] = bp_hybrid_fast(n2_val, n3_val, depth1_val, trialOutputDir);
+            [Img, tTotal] = bp_hybrid_fast(n2_val, n3_val, depth1_val, trialOutputDir, gpuIdx);
             compTime(k) = tTotal;
 
             % Load grid variables from saved .mat
