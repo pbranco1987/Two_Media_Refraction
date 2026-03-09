@@ -28,16 +28,22 @@
 %   - Cross-depth summary plot (best sharpness vs depth1)
 % =========================================================================
 
-clc; clear; close all;
-
 %% ======================== BATCH / GPU CONFIGURATION ======================
 % Set trialStart and trialEnd to run a subset of the full sweep.
 % Defaults: trialStart = 1, trialEnd = inf (all trials).
 % Set gpuIdx to select which GPU device to use (1-based MATLAB indexing).
 % Default: gpuIdx = [] (use MATLAB's default GPU).
+% NOTE: These must be checked BEFORE clear, which wipes workspace variables.
 if ~exist('trialStart', 'var'), trialStart = 1;   end
 if ~exist('trialEnd',   'var'), trialEnd   = inf;  end
 if ~exist('gpuIdx',     'var'), gpuIdx     = [];    end
+
+% Save config, then clear everything else
+savedStart = trialStart; savedEnd = trialEnd; savedGpu = gpuIdx;
+clc; close all;
+clearvars -except savedStart savedEnd savedGpu;
+trialStart = savedStart; trialEnd = savedEnd; gpuIdx = savedGpu;
+clear savedStart savedEnd savedGpu;
 
 %% ======================== DEFINE PARAMETER RANGES =======================
 n2_values = 3.2:0.05:4.0;   % Soil layer 1 refractive index (17 values)
