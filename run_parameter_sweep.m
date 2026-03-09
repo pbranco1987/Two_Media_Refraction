@@ -54,7 +54,12 @@ n3_values = 3.2:0.05:4.0;   % Soil layer 2 refractive index (17 values)
 depth1_values = 0.10:0.10:1.60;
 
 %% ======================== SETUP OUTPUT DIRECTORY ========================
-baseOutputDir = fullfile(pwd, 'sweep_results');
+% Each batch gets its own output directory to keep results independent.
+if trialStart == 1 && isinf(trialEnd)
+    baseOutputDir = fullfile(pwd, 'sweep_results');
+else
+    baseOutputDir = fullfile(pwd, sprintf('sweep_results_%d_%d', trialStart, min(trialEnd, 17*17*16)));
+end
 if ~exist(baseOutputDir, 'dir')
     mkdir(baseOutputDir);
 end
@@ -182,14 +187,9 @@ sweepVarNames = { ...
     'DynamicRange_dB', ...
     'Status', 'Folder'};
 
-% Paths for the live-updated summary files (include range to avoid overwrites)
-if trialStart == 1 && trialEnd == nCombinations
-    summaryMatFile = fullfile(baseOutputDir, 'sweep_summary.mat');
-    summaryCsvFile = fullfile(baseOutputDir, 'sweep_summary.csv');
-else
-    summaryMatFile = fullfile(baseOutputDir, sprintf('sweep_summary_%d_%d.mat', trialStart, trialEnd));
-    summaryCsvFile = fullfile(baseOutputDir, sprintf('sweep_summary_%d_%d.csv', trialStart, trialEnd));
-end
+% Paths for the live-updated summary files
+summaryMatFile = fullfile(baseOutputDir, 'sweep_summary.mat');
+summaryCsvFile = fullfile(baseOutputDir, 'sweep_summary.csv');
 
 %% ======================== RUN SWEEP =====================================
 % Main loop: iterate over all parameter combinations, skipping redundant
