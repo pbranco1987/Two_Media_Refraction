@@ -22,7 +22,7 @@ function [Img, tTotal] = bp_hybrid_fast(n2_in, n3_in, depth1_in, outputDir, gpuI
 %
 % 4) anyL3 GUARD: skips Newton P2 + L3 cost paths for L2-only chunks.
 %
-% 4x oversampling via FFT zero-padding for sub-sample delay accuracy.
+% Pure sinc interpolation: FFT zero-padding (4x) + Lanczos-4 windowed sinc.
 %
 % Inputs/Outputs: identical interface to bp_hybrid.
 % =========================================================================
@@ -130,8 +130,9 @@ if oversampFactor > 1
         oversampFactor, Nt_orig, Nt, double(fs)/1e6/oversampFactor, double(fs)/1e6);
 end
 
-radarData = [radarData; zeros(1,Nrad,'single')];
-Nt_pad = Nt + 1;
+sincHalfLen = 4;  % Lanczos-4: 8-tap windowed sinc kernel
+radarData = [radarData; zeros(sincHalfLen, Nrad, 'single')];
+Nt_pad = Nt + sincHalfLen;
 idxOff = single(1 - t0 * fs);
 twoOverC = single(2) / c;   % Precomputed factor for tau = 2*pathLen/c
 
@@ -417,12 +418,26 @@ for vc = 1:nVoxelChunks
         idxF = tau * fs + idxOff;
         validI = isfinite(idxF) & (idxF >= 1) & (idxF <= Nt);
 
-        iFl = int32(max(1, min(Nt, floor(idxF))));
-        iCe = int32(min(Nt_pad, iFl + 1));
-        wCe = idxF - single(iFl);
+        % ---- Sinc interpolation (Lanczos-4 windowed, 8-tap kernel) ----
+        iBase = int32(max(1, min(Nt, floor(idxF))));
+        frac  = idxF - single(iBase);   % fractional offset in [0, 1)
 
         base = int32(0:B-1) * int32(Nt_pad);
-        val = traces(iFl + base) .* (1 - wCe) + traces(iCe + base) .* wCe;
+        val  = gpuArray.zeros(size(idxF), 'single');
+
+        for m = -3:4   % sincHalfLen-1 taps left, sincHalfLen taps right
+            idx = max(int32(1), min(int32(Nt), iBase + int32(m)));
+            x   = frac - single(m);
+
+            % Lanczos-4 kernel: sinc(x) * sinc(x/4)
+            pix   = single(pi) * x;
+            pix_L = pix * single(0.25);           % pi * x / L
+            kern  = ones(size(x), 'like', x);     % sinc(0) = 1
+            nz    = abs(x) > single(1e-7);
+            kern(nz) = (sin(pix(nz)) ./ pix(nz)) .* (sin(pix_L(nz)) ./ pix_L(nz));
+
+            val = val + traces(idx + base) .* kern;
+        end
 
         if applyPhase
             val = val .* exp(1j * omega_c * tau);
