@@ -33,13 +33,12 @@ clc; clear; close all;
 %% ======================== DEFINE PARAMETER RANGES =======================
 % Refractive indices: 9 evenly spaced values from 3.2 to 4.0 (step = 0.1)
 % These represent typical soil permittivity values for GPR applications.
-n2_values = linspace(3.2, 4.0, 9);   % Soil layer 1 refractive index (9 values)
-n3_values = linspace(3.2, 4.0, 9);   % Soil layer 2 refractive index (9 values)
+n2_values = 3.2:0.05:4.0;   % Soil layer 1 refractive index (17 values)
+n3_values = 3.2:0.05:4.0;   % Soil layer 2 refractive index (17 values)
 
 % Depth of the second interface (DEM2) below the first (DEM1), in meters.
-% 15 values from 20 cm to 1.60 m with 10 cm spacing covers the expected
-% range of the soil layer 1 thickness at fine resolution.
-depth1_values = 0.20:0.10:1.60;
+% 16 values from 10 cm to 1.60 m with 10 cm spacing.
+depth1_values = 0.10:0.10:1.60;
 
 %% ======================== SETUP OUTPUT DIRECTORY ========================
 baseOutputDir = fullfile(pwd, 'sweep_results');
@@ -57,31 +56,7 @@ n3_list     = N3_grid(:);     % Flattened list of all n3 values [nCombinations x
 depth1_list = D1_grid(:);     % Flattened list of all depth1 values [nCombinations x 1]
 nCombinations = numel(n2_list);  % Total number of parameter combinations
 
-% --- n2 == n3 skip optimization ---
-% When n2 equals n3, both soil layers have identical refractive indices,
-% so there is no refraction at the DEM2 interface. The depth of DEM2 has
-% no physical effect, making all depth1 values produce identical results.
-% We compute only the first depth1 and copy results to all other entries.
-sameN = (abs(n2_list - n3_list) < 1e-10);                  % Logical: n2 == n3
-refDepth1 = depth1_values(1);                               % Reference depth1 used for computation
-skipMask = sameN & (abs(depth1_list - refDepth1) > 1e-10);  % True = skip (redundant trial)
-nSkipped = sum(skipMask);
-nToRun   = nCombinations - nSkipped;
-
-% Build a lookup table: for each skipped trial, store the index of the
-% reference trial (same n2==n3 with depth1 == refDepth1) to copy from.
-% The ndgrid ordering guarantees that the reference trial (first depth1)
-% is always processed before any of its skipped copies.
-refTrialIdx = zeros(nCombinations, 1);   % 0 = not skipped, >0 = index of reference trial
-for k = 1:nCombinations
-    if skipMask(k)
-        % Find the reference trial: same n2, same n3, depth1 == refDepth1
-        match = find(abs(n2_list - n2_list(k)) < 1e-10 & ...
-                     abs(n3_list - n3_list(k)) < 1e-10 & ...
-                     abs(depth1_list - refDepth1) < 1e-10);
-        refTrialIdx(k) = match(1);
-    end
-end
+nToRun = nCombinations;
 
 fprintf('============================================\n');
 fprintf('       PARAMETER SWEEP (3D Cartesian)       \n');
@@ -91,7 +66,6 @@ fprintf('n3 values (%d): %s\n', numel(n3_values), mat2str(n3_values, 4));
 fprintf('depth1 values (%d): %s\n', numel(depth1_values), mat2str(depth1_values, 4));
 fprintf('Full cartesian product: %d x %d x %d = %d\n', ...
     numel(n2_values), numel(n3_values), numel(depth1_values), nCombinations);
-fprintf('Skipping %d redundant trials (n2 == n3, depth1 irrelevant)\n', nSkipped);
 fprintf('Trials to compute: %d\n\n', nToRun);
 
 %% ======================== PRE-ALLOCATE RESULTS ==========================
@@ -208,68 +182,17 @@ for k = 1:nCombinations
     trialOutputDir = fullfile(baseOutputDir, folderName);
     folder_col{k} = folderName;
 
-    % ---- Skip redundant trial when n2 == n3 ----
-    if skipMask(k)
-        ref = refTrialIdx(k);
-        % Copy all metrics from the reference trial (same n2==n3, first depth1)
-        compTime(k)           = compTime(ref);
-        peakMag(k)            = peakMag(ref);
-        peakX(k)              = peakX(ref);
-        peakY(k)              = peakY(ref);
-        peakZ(k)              = peakZ(ref);
-        entropy_amp_norm(k)   = entropy_amp_norm(ref);
-        entropy_int_norm(k)   = entropy_int_norm(ref);
-        entropy_amp_raw(k)    = entropy_amp_raw(ref);
-        entropy_int_raw(k)    = entropy_int_raw(ref);
-        sharp_peak_mean(k)    = sharp_peak_mean(ref);
-        sharp_peak_median(k)  = sharp_peak_median(ref);
-        sharp_peak_rms(k)     = sharp_peak_rms(ref);
-        res3_x(k)             = res3_x(ref);
-        res3_y(k)             = res3_y(ref);
-        res3_z(k)             = res3_z(ref);
-        res3_vol(k)           = res3_vol(ref);
-        res3_equiv_diam(k)    = res3_equiv_diam(ref);
-        res6_x(k)             = res6_x(ref);
-        res6_y(k)             = res6_y(ref);
-        res6_z(k)             = res6_z(ref);
-        TBR_dB_col(k)         = TBR_dB_col(ref);
-        SCR_dB_col(k)         = SCR_dB_col(ref);
-        CNR_col(k)            = CNR_col(ref);
-        PSLR_dB_col(k)        = PSLR_dB_col(ref);
-        ISLR_dB_col(k)        = ISLR_dB_col(ref);
-        kurtosis_col(k)       = kurtosis_col(ref);
-        skewness_col(k)       = skewness_col(ref);
-        CV_col(k)             = CV_col(ref);
-        gini_col(k)           = gini_col(ref);
-        pct_vox_50(k)         = pct_vox_50(ref);
-        pct_vox_90(k)         = pct_vox_90(ref);
-        pct_vox_99(k)         = pct_vox_99(ref);
-        eff_scatterers(k)     = eff_scatterers(ref);
-        eff_scatterers_pct(k) = eff_scatterers_pct(ref);
-        grad_mean(k)          = grad_mean(ref);
-        grad_mean_peak(k)     = grad_mean_peak(ref);
-        grad_max(k)           = grad_max(ref);
-        psf_asym_max(k)       = psf_asym_max(ref);
-        dyn_range_dB(k)       = dyn_range_dB(ref);
-        status_col{k}         = status_col{ref};
-        folder_col{k}         = folder_col{ref};   % point to same folder
+    nComputed = nComputed + 1;
+    if ~exist(trialOutputDir, 'dir')
+        mkdir(trialOutputDir);
+    end
 
-        fprintf('=== Trial %d/%d: n2=%.2f, n3=%.2f, depth1=%.2f m -> SKIPPED (n2==n3, copied from trial %d) ===\n', ...
-            k, nCombinations, n2_val, n3_val, depth1_val, ref);
-
-    else
-        % ---- Actually compute this trial ----
-        nComputed = nComputed + 1;
-        if ~exist(trialOutputDir, 'dir')
-            mkdir(trialOutputDir);
-        end
-
-        fprintf('=== Trial %d/%d [compute %d/%d]: n2=%.2f, n3=%.2f, depth1=%.2f m ===\n', ...
-            k, nCombinations, nComputed, nToRun, n2_val, n3_val, depth1_val);
+    fprintf('=== Trial %d/%d [compute %d/%d]: n2=%.2f, n3=%.2f, depth1=%.2f m ===\n', ...
+        k, nCombinations, nComputed, nToRun, n2_val, n3_val, depth1_val);
 
         try
             % ---- Step 1: Run backprojection ----
-            [Img, tTotal] = bp_hybrid(n2_val, n3_val, depth1_val, trialOutputDir);
+            [Img, tTotal] = bp_hybrid_fast(n2_val, n3_val, depth1_val, trialOutputDir);
             compTime(k) = tTotal;
 
             % Load grid variables from saved .mat
@@ -369,7 +292,6 @@ for k = 1:nCombinations
 
         % Free figures between trials
         close all;
-    end
 
     % ---- INCREMENTAL SAVE ----
     % Save the summary table after every trial (both computed and skipped).
@@ -391,7 +313,7 @@ for k = 1:nCombinations
         status_col, folder_col, ...
         'VariableNames', sweepVarNames);
     save(summaryMatFile, 'sweepTable', 'n2_values', 'n3_values', 'depth1_values', ...
-        'elapsedSoFar', 'k', 'nCombinations', 'nToRun', 'nSkipped');
+        'elapsedSoFar', 'k', 'nCombinations', 'nToRun');
     writetable(sweepTable, summaryCsvFile);
     fprintf('  [Saved progress: %d/%d done | %.1f min elapsed]\n\n', ...
         k, nCombinations, elapsedSoFar / 60);
@@ -529,11 +451,9 @@ end
 fprintf('\n============================================\n');
 fprintf('          SWEEP COMPLETE                    \n');
 fprintf('============================================\n');
-fprintf('Total combinations (cartesian product): %d\n', nCombinations);
-fprintf('Skipped (n2==n3 redundant depth1): %d\n', nSkipped);
-fprintf('Actually computed: %d\n', nToRun);
+fprintf('Total combinations: %d\n', nCombinations);
 fprintf('Successful: %d\n', sum(successMask));
-fprintf('Failed: %d\n', sum(~successMask & ~skipMask));
+fprintf('Failed: %d\n', sum(~successMask));
 fprintf('Total sweep time: %.1f min (%.1f hrs)\n', totalSweepTime/60, totalSweepTime/3600);
 fprintf('Results directory: %s\n', baseOutputDir);
 fprintf('============================================\n');
